@@ -11,7 +11,6 @@ tf.set_random_seed(2022)
 is_train = tf.placeholder_with_default(False, (), 'is_train')
 starttime = datetime.datetime.now()
 OUTPUT_GRAPH = False
-#定义超参数
 gamma=0.9
 hidden_width1=64
 hidden_width2=64

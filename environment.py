@@ -99,7 +99,6 @@ class IesEnv_winter():
         else:
             es_loss=0
         current_cost, mr_cost ,elc_cost, gas_cost = self.compute_cost(state,elec_demand,CHP_elc_out,out_GB_heat,out_HP_elec)
-        #超限惩罚
         dhr_loss = np.zeros((4))
         dhr_loss[0] = self.compute_over_cost(CHP_elc_out, self.min_output_CHP[0,0], self.max_output_CHP[0,0])  # CHP
         dhr_loss[1] = self.compute_over_cost(out_HP_heat, self.min_output_HP[0,0], self.max_output_HP[0,0])  #HP

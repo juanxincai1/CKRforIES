@@ -12,7 +12,7 @@ class IesEnv_winter():
         list_elec = []
         list_heat = []
         list_ld = []
-        for x in range(350):
+        for x in range(300):
             value = sheet_load.row_values(x,0,72)
             list_elec.append(value[0:24])
             list_heat.append(value[24:48])

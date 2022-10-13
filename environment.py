@@ -2,11 +2,12 @@ import numpy as np
 from gym import spaces
 import xlrd
 
-class IesEnv_winter():
+class IesEnv():
     def __init__(self, period, day ,time_step):
         self.period = period
         self.day = day
         self.time_step = time_step
+        #Data preparation
         excel = xlrd.open_workbook('data.xls',encoding_override="utf-8")
         sheet_load = excel.sheet_by_index(0)
         list_elec = []
@@ -17,6 +18,7 @@ class IesEnv_winter():
             list_elec.append(value[0:24])
             list_heat.append(value[24:48])
             list_ld.append(value[48:72])
+        #Parameter definition
         self.load_elec = np.array(list_elec)
         self.load_heat = np.array(list_heat)
         self.load_ld = np.array(list_ld)
@@ -28,12 +30,14 @@ class IesEnv_winter():
         self.Yita_RG = 1
         self.Yita_ch = -0.95
         self.Yita_dis = -0.95
+        #running cost
         self.c_mr = np.array(([0.05, 0.04, 0.02, 0.02, 0.02])) .reshape(1,-1)
         self.Gas_caloritic_value = 33.812
         self.Yita_energy_init_capacity = 0.5
         self.energy_storage_capacity_upper = 0.9
         self.energy_storage_capacity_lower = 0.1
         self.RG_to_elec=self.load_ld
+        # Price definition
         self.Gas_price = 0.0321
         self.peak = 0.1999
         self.flat = 0.1199
@@ -41,6 +45,7 @@ class IesEnv_winter():
         self.Elec_price = np.concatenate(
             (self.cereal * (np.ones(7)), self.flat * np.ones(5), self.peak * np.ones(7),
             self.flat * np.ones(4), self.cereal * np.ones(1))).reshape(1,-1)
+        #Upper and lower limits
         self.max_output_CHP = 2560 * np.ones(self.period).reshape(1,-1)
         self.min_output_CHP = np.zeros(self.period).reshape(1,-1)
         self.max_output_HP = 2400 * np.ones(self.period).reshape(1,-1)
@@ -75,10 +80,12 @@ class IesEnv_winter():
         self.observation_space = spaces.Box(low=low, high=high,
                                             dtype=np.float32)
         self.state=[]
+    #Initialization status
     def reset(self,day):
         self.time_step=0
         self.state = np.hstack((self.load_elec[day,self.time_step], self.load_heat[day,self.time_step], self.RG_to_elec[day,self.time_step], self.energy_storage_init_capacity[0,self.time_step], self.time_step )).reshape(1,-1)
         return self.state
+    #Status Replacement and Reward Value Return
     def forward(self, action, state ,day):
         CHP_heat_out=action[0,0]*state[0,1]
         out_HP_heat=action[0,1]*state[0,1]
@@ -99,7 +106,7 @@ class IesEnv_winter():
         else:
             es_loss=0
         current_cost, mr_cost ,elc_cost, gas_cost = self.compute_cost(state,elec_demand,CHP_elc_out,out_GB_heat,out_HP_elec)
-        #超限惩罚
+        #Transfinite punishment
         dhr_loss = np.zeros((4))
         dhr_loss[0] = self.compute_over_cost(CHP_elc_out, self.min_output_CHP[0,0], self.max_output_CHP[0,0])  # CHP
         dhr_loss[1] = self.compute_over_cost(out_HP_heat, self.min_output_HP[0,0], self.max_output_HP[0,0])  #HP
@@ -113,6 +120,7 @@ class IesEnv_winter():
         else:
             state_=np.hstack((self.load_elec[day,self.time_step-24], self.load_heat[day,self.time_step-24], self.RG_to_elec[day,self.time_step-24], self.energy_storage_init_capacity[0,self.time_step-24], self.time_step-24 )).reshape(1,-1)
         return state_, -loss,current_cost
+    #Calculation of overrun cost
     def compute_over_cost(self, value, down, high):
         if value>high:
             loss=np.linalg.norm(value-high)
@@ -121,6 +129,7 @@ class IesEnv_winter():
         else:
             loss=0
         return loss
+    #Calculating costs
     def compute_cost(self,state,elec_demand,CHP_out_elc,out_GB_heat,out_HP_elec):
         if elec_demand>0:
             cost_elec =np.sum(elec_demand * self.Elec_price[0,self.time_step])
@@ -133,6 +142,7 @@ class IesEnv_winter():
                  + self.c_mr[0,4] * state[0,2] )
         cost = cost_elec + cost_gas + cost_mr
         return cost, cost_mr,cost_elec, cost_gas
+    #Calculate the cost of battery energy storage
     def compute_esloss(self, cur_state_pre):
         es_loss = np.linalg.norm(cur_state_pre[0,0] - cur_state_pre[0,self.period-1])
         return es_loss

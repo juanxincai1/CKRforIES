@@ -1,5 +1,6 @@
 """
 CKR_RL
+Dependencies:tensorflow 2.5
 """
 import tensorflow.compat.v1 as tf
 import numpy as np
@@ -10,38 +11,43 @@ np.random.seed(2022)
 tf.set_random_seed(2022)
 is_train = tf.placeholder_with_default(False, (), 'is_train')
 starttime = datetime.datetime.now()
-gamma=0.9
+
+
+#####################  hyper parameters  ####################
+gamma=0.9# reward discount
 hidden_width_pg=64
 hidden_width_ac=64
 hidden_width_cri=64
 hidden_width_mlp=64
-MAX_EP_STEPS = 24
+MAX_EP_STEPS = 24 #Number of track turns
 initial_learning_rate = 0.000005
 MEMORY_CAPACITY = 1000
 batch_size_train = 32
-var=[0.001,0.001,0.001,50]
-tao=0.01
+var=[0.001,0.001,0.001,50]#Action noise
+tao=0.01# soft replacement
 env = IesEnv_winter(period=24,day=0,time_step=0)
 env_main = IesEnv_winter(period=24,day=0,time_step=0)
-N_S = 5
-N_A = 4
+N_S = 5#Status Dimension
+N_A = 4#Action dimension
 max_action = env.action_space.high
 max_action=max_action.reshape(1,-1)
 low_action=env.action_space.low
 low_action=low_action.reshape(1,-1)
-LARGE_NUM = 1e9
-k=5
-EPS=1e-4
+LARGE_NUM = 1e9#Decimal term，Avoid 0
+k=5#category
+EPS=1e-4#Decimal term
 episode_pretrained=500
 episode_pg=500
 episode_contrastive=1000
 episode_mainRL=1000
 length=100
 train_days=250
-b_bound_numb=[length,length,length,length,length]
-current_class_state =[0.20,0.20,0.20,0.20,0.20]
+b_bound_numb=[length,length,length,length,length]#Category number
+current_class_state =[0.20,0.20,0.20,0.20,0.20]#Initial value of category number
 current_class_state=np.mat(current_class_state)
-LEARNING_RATE_STEP=150000
+LEARNING_RATE_STEP=150000#Number of rounds of learning rate attenuation
+
+###############################  CKR_RL  ####################################
 
 class policygradient(object):
     def __init__(self):
@@ -59,6 +65,7 @@ class policygradient(object):
 
         return action, log_prob
 
+#pretrain actor
 class actor_target(object):
     def __init__(self):
         with tf.name_scope(name='actor_target_net'):
@@ -96,7 +103,7 @@ class actor_eval(object):
             tf.layers.batch_normalization(tf.matmul(net11, self.weights3), training=is_train)) * 320
         action = tf.concat([action1, action2], 1)
         return action
-
+#pretrain critic
 class critic_target(object):
     def __init__(self):
         with tf.name_scope(name='critic_target_net'):
@@ -139,7 +146,7 @@ class critic_eval(object):
         value_q2 = tf.matmul(value_q1, self.weights3) + self.bias3
 
         return value_q2
-
+#Define LSTM
 class lstm(object):
     def __init__(self, input_width, state_width, hidden_width):
         self.input_width = input_width
@@ -190,7 +197,7 @@ class lstm(object):
         h = ot * tf.tanh(c)
         self.h_list.append(h)
         return h
-
+#Define mlp
 class mlp(object):
     def __init__(self):
         with tf.name_scope(name='contrast_mlp'):
@@ -202,7 +209,7 @@ class mlp(object):
         result1 = tf.nn.relu(tf.matmul(x,self.weights1)+self.bias1)
         result2 = tf.matmul(result1,self.weights2)+self.bias2
         return result2
-
+#mainRL actor
 class actor_target_contrast(object):
     def __init__(self):
         with tf.name_scope(name='actor_target_contrast_net'):
@@ -240,7 +247,7 @@ class actor_eval_contrast(object):
             tf.layers.batch_normalization(tf.matmul(net11, self.weights3), training=is_train)) * 320
         action = tf.concat([action1, action2], 1)
         return action
-
+#mainRL critic
 class critic_eval_contrast(object):
     def __init__(self):
         with tf.name_scope(name='critic_eval_contrast_net'):
@@ -280,7 +287,7 @@ class critic_target_contrast(object):
         value_q1 = tf.layers.dropout(value_q1, 0.5)
         value_q2 = tf.matmul(value_q1, self.weights3) + self.bias3
         return value_q2
-
+#Define experience pool
 class Memory(object):
     def __init__(self, capacity, dims):
         self.capacity = capacity
@@ -288,16 +295,17 @@ class Memory(object):
         self.pointer = 0
     def store_transition(self,s,a,r,s_):
         transition = np.hstack((s,a,[[r]],s_))
-        index = self.pointer % self.capacity
+        index = self.pointer % self.capacity # replace the old memory with new memory
         self.data[index, :] = transition
         self.pointer += 1
     def sample(self, n):
         assert self.pointer >= self.capacity,'Memory has not been fulfilled'
         indices = np.random.choice(self.capacity, size=n)
         return self.data[indices, :]
-
+#Value Selection
 def takelast(elem):
     return elem[-1]
+#Define Inputs
 state = tf.placeholder(tf.float32,[None, N_S])
 reward = tf.placeholder(tf.float32,[None, 1])
 state_ = tf.placeholder(tf.float32,[None, N_S])
@@ -306,19 +314,25 @@ a_ = tf.placeholder(tf.float32,[None, N_A])
 reward_contrast= tf.placeholder(tf.float32,[None, 1])
 state_pg = tf.placeholder(tf.float32,[1, k])
 reward_pg = tf.placeholder(tf.float32,[None, 1])
+#Initialize Pretrain Network
 actortarget=actor_target()
 actoreval=actor_eval()
 critictarget=critic_target()
 criticeval=critic_eval()
+#Initialize experience playback
 Replay_buffer=Memory(MEMORY_CAPACITY, dims=2 * N_S + N_A + 1)
 Replay_buffer_main=Memory(MEMORY_CAPACITY, dims=2 * N_S + N_A + 1)
+#Initialize the comparative learning network
 contrast_lstm=lstm(N_S,hidden_width_mlp,hidden_width_mlp)
 contrast_mlp=mlp()
+#Initialize mainRL Network
 actortargetcontrast=actor_target_contrast()
 actorevalcontrast=actor_eval_contrast()
 critictargetcontrast=critic_target_contrast()
 criticevalcontrast=critic_eval_contrast()
+#initialization policy gradiant
 policygradient_contrast=policygradient()
+#Define the pre training loss function
 a_current=actoreval.forward(state)
 a_next=actortarget.forward(state_)
 value_q_current=criticeval.forward(state,a_current)
@@ -326,6 +340,7 @@ value_q_next=critictarget.forward(state_,a_next)
 target_q=reward+gamma*value_q_next
 loss_critic=tf.reduce_mean(tf.squared_difference(target_q,value_q_current))
 loss_actor=-tf.reduce_mean(value_q_current)
+#Define the training loss function of contrast learning network
 l1=contrast_lstm.forward(state)
 l2=contrast_lstm.forward(state_)
 m1=contrast_mlp.forward(l1)
@@ -343,6 +358,7 @@ loss_a = tf.losses.softmax_cross_entropy(
 loss_b = tf.losses.softmax_cross_entropy(
     labels, tf.concat([logits_ba, logits_bb], 1), weights=1.0)
 loss_contrast = loss_a + loss_b
+#Define the mainRL loss function
 a_current_contrast=actorevalcontrast.forward(state)
 a_next_contrast=actortargetcontrast.forward(state_)
 statemid=contrast_lstm.forward(state)
@@ -354,8 +370,10 @@ value_q_next_contrast=critictargetcontrast.forward(state_mid_,a_next_contrast)
 target_q_contrast=reward_contrast+gamma*value_q_next_contrast
 loss_critic_contrast=tf.reduce_mean(tf.squared_difference(target_q_contrast,value_q_current_contrast))
 loss_actor_contrast=-tf.reduce_mean(value_q_current_contrast)
+#Define the policy gradiant loss function
 action_class,log_prob=policygradient_contrast.forward(state_pg)
 loss_policy_class = -tf.reduce_mean(log_prob*reward_pg)
+#Network training
 train_actor_target=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='actor_target_net')
 train_actor_eval=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='actor_eval_net')
 train_critic_target=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='critic_target_net')
@@ -367,6 +385,7 @@ train_actor_eval_contrast=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, sc
 train_critic_target_contrast=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='critic_target_contrast_net')
 train_critic_eval_contrast=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='critic_eval_contrast_net')
 train_pg=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Pg_class_train')
+#Soft update
 soft_replace1 = [tf.assign(t, (1 - tao) * t + tao * e)
         for t, e in zip(train_critic_target, train_critic_eval)]
 soft_replace2 = [tf.assign(t, (1 - tao) * t + tao * e)
@@ -376,6 +395,7 @@ soft_replace3 = [tf.assign(t, (1 - tao) * t + tao * e)
 soft_replace4 = [tf.assign(t, (1 - tao) * t + tao * e)
         for t, e in zip(train_actor_target_contrast, train_actor_eval_contrast)]
 global_step =tf.Variable(0, trainable=False)
+#Optimizer and Learning Rate Settings
 LR_A = tf.train.exponential_decay(initial_learning_rate,global_step,LEARNING_RATE_STEP,1,staircase=True)
 LR_AA = tf.train.exponential_decay(initial_learning_rate,global_step,LEARNING_RATE_STEP,1,staircase=True)
 LR_C = tf.train.exponential_decay(initial_learning_rate,global_step,LEARNING_RATE_STEP,1,staircase=True)
@@ -388,7 +408,7 @@ train_op_lstm_mlp = tf.train.AdamOptimizer(LR_M).minimize(loss_contrast,global_s
 train_op_actor_contrast = tf.train.AdamOptimizer(LR_AA).minimize(loss_actor_contrast,global_step=global_step,var_list=train_actor_eval_contrast)
 train_op_critic_contrast = tf.train.AdamOptimizer(LR_CC).minimize(loss_critic_contrast,global_step=global_step,var_list=train_critic_eval_contrast)
 train_op_policygradiant = tf.train.AdamOptimizer(LR_P).minimize(loss_policy_class,global_step=global_step,var_list=train_pg)
-init_op = tf.global_variables_initializer()
+init_op = tf.global_variables_initializer()#Global variable initialization
 ###############################  training  ####################################
 with tf.Session() as sess:
     #init
@@ -404,11 +424,12 @@ with tf.Session() as sess:
             ep_state = s
             for j in range(MAX_EP_STEPS):
                 a = sess.run(a_current, feed_dict={state: s})
+                # Add exploration noise
                 a = np.random.normal(a, var)
                 s_, r, _ = env.forward(a, s, day)
                 Replay_buffer.store_transition(s, a, r, s_)
                 if Replay_buffer.pointer > MEMORY_CAPACITY:
-                    var[0] *= 0.9
+                    var[0] *= 0.9# decay the action randomness
                     var[1] *= 0.9
                     var[2] *= 0.9
                     var[3] *= 0.9

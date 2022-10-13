@@ -5,7 +5,7 @@ Dependencies:tensorflow 2.5
 import tensorflow.compat.v1 as tf
 import numpy as np
 import datetime
-from environment import IesEnv_winter
+from environment import IesEnv
 tf.compat.v1.disable_eager_execution()
 np.random.seed(2022)
 tf.set_random_seed(2022)
@@ -25,8 +25,8 @@ MEMORY_CAPACITY = 1000
 batch_size_train = 32
 var=[0.001,0.001,0.001,50]#Action noise
 tao=0.01# soft replacement
-env = IesEnv_winter(period=24,day=0,time_step=0)
-env_main = IesEnv_winter(period=24,day=0,time_step=0)
+env = IesEnv(period=24,day=0,time_step=0)
+env_main = IesEnv(period=24,day=0,time_step=0)
 N_S = 5#Status Dimension
 N_A = 4#Action dimension
 max_action = env.action_space.high
